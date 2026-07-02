@@ -3,6 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "discover": "node scripts/discover-php.js"
+    "discover": "node scripts/discover-php.js",
+    "push": "git add . && git commit -m 'Update PHP versions' && git push"
   }
 }

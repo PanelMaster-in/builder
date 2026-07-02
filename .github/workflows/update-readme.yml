@@ -1,0 +1,42 @@
+name: Update README Downloads
+
+on:
+  workflow_run:
+    workflows: ["Build Linux", "Build macOS", "Build Windows"]
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main # Pull the latest state of main to avoid conflict issues
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run README update script
+        run: node scripts/update-readme.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+
+      - name: Commit and push changes
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update README releases download links"
+            git push
+          else
+            echo "No changes to README.md"
+          fi

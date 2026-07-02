@@ -1,7 +1,12 @@
 name: Discover PHP
 
 on:
-  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *" # Run daily at midnight UTC
+  workflow_dispatch: # Enable manual execution
+
+permissions:
+  contents: write
 
 jobs:
   discover:
@@ -10,12 +15,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Set up Node environment (no npm install needed if using vanilla global fetch in discover-php.js)
       - uses: actions/setup-node@v4
         with:
           node-version: 22
 
-      - run: npm install
-      - run: npm run discover
+      - name: Run discovery script
+        run: node scripts/discover-php.js
+
+      - name: Commit and push version updates
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add manifests/php.json
+          # Commit only if there are changes
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: update discovered PHP versions manifest"
+            git push
+          else
+            echo "No PHP version updates discovered."
+          fi
 
       - uses: actions/upload-artifact@v4
         with:

@@ -1,35 +1,74 @@
 name: Build Windows
 
 on:
+  push:
+    paths:
+      - "manifests/php.json"
   workflow_dispatch:
+    inputs:
+      php_version:
+        description: "PHP Version to build (e.g., 8.3.23 or 'all')"
+        required: true
+        default: "all"
+
+permissions:
+  contents: write
 
 jobs:
-  build:
-    runs-on: windows-2025
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: set-matrix
+        run: |
+          INPUT_VERSION="${{ github.event.inputs.php_version }}"
+          if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "all" ]; then
+            echo "matrix=[\"$INPUT_VERSION\"]" >> $GITHUB_OUTPUT
+          else
+            # Extract values as a JSON array
+            VERSIONS=$(jq -c '[.[]]' manifests/php.json)
+            echo "matrix=$VERSIONS" >> $GITHUB_OUTPUT
+          fi
 
+  build:
+    needs: setup
+    runs-on: windows-2025
     strategy:
+      fail-fast: false
       matrix:
-        php:
-          - 7.4
-          - 8.0
-          - 8.1
-          - 8.2
-          - 8.3
-          - 8.4
-          - 8.5
+        php: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - shell: powershell
-        run: |
-          $v = Get-Content manifests/php.json |
-            ConvertFrom-Json
-
-          .\scripts\build-windows.ps1 `
-            $v.${{ matrix.php }}
-
-      - uses: actions/upload-artifact@v4
+      # Set up MSVC build toolchain (Visual Studio Build Tools are preinstalled on windows-2025 runners)
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          name: windows-${{ matrix.php }}
-          path: output/*
+          arch: x64
+
+      # Set up PHP SDK environment
+      - name: Install PHP SDK binary tools
+        shell: powershell
+        run: |
+          git clone --depth=1 https://github.com/php/php-sdk-binary-tools.git C:\php-sdk
+          # Initialize the SDK environment and verify it is available
+          & C:\php-sdk\phpsdk-vs17-x64.bat
+
+      - name: Compile and Package PHP Core & Extensions
+        shell: powershell
+        run: |
+          .\scripts\build-windows.ps1 -Version "${{ matrix.php }}"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ matrix.php }}
+          name: PHP Version ${{ matrix.php }}
+          draft: false
+          prerelease: false
+          files: output/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
