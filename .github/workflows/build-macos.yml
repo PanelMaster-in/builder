@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       php_version:
-        description: "PHP Version to build (e.g., 8.3.23 or 'all')"
+        description: "Exact PHP version (e.g. 8.3.23) or 'all'"
         required: true
         default: "all"
 
@@ -15,6 +15,7 @@ permissions:
   contents: write
 
 jobs:
+  # ── Compute matrix from manifest ────────────────────────────────────────────
   setup:
     runs-on: ubuntu-latest
     outputs:
@@ -23,13 +24,11 @@ jobs:
       - uses: actions/checkout@v4
       - id: set-matrix
         run: |
-          INPUT_VERSION="${{ github.event.inputs.php_version }}"
-          if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "all" ]; then
-            echo "matrix=[\"$INPUT_VERSION\"]" >> $GITHUB_OUTPUT
+          INPUT="${{ github.event.inputs.php_version }}"
+          if [ -n "$INPUT" ] && [ "$INPUT" != "all" ]; then
+            echo "matrix=[\"$INPUT\"]" >> $GITHUB_OUTPUT
           else
-            # Extract values as a JSON array
-            VERSIONS=$(jq -c '[.[]]' manifests/php.json)
-            echo "matrix=$VERSIONS" >> $GITHUB_OUTPUT
+            echo "matrix=$(jq -c '[.[]]' manifests/php.json)" >> $GITHUB_OUTPUT
           fi
 
   build:
@@ -37,9 +36,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os:
-          - macos-13 # Intel x64 architecture
-          - macos-14 # Apple Silicon ARM64 architecture
+        # macos-13 = Intel x64 | macos-14 = Apple Silicon ARM64
+        os: [macos-13, macos-14]
         php: ${{ fromJson(needs.setup.outputs.matrix) }}
 
     runs-on: ${{ matrix.os }}
@@ -48,10 +46,12 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Build Dependencies (Homebrew)
-        # FIX: correct formula names — 'libjpeg' does not exist (use 'jpeg'),
-        # 'webp' does not exist (use 'libwebp'). Also added pkg-config and
-        # libxml2 which are required for PHP's configure step.
         run: |
+          # FIX: correct formula names used here:
+          #   jpeg        (NOT libjpeg)
+          #   libwebp     (NOT webp)
+          # Also include icu4c (for intl), libxml2, oniguruma (mbstring),
+          # imagemagick (for imagick PECL), and bison (macOS ships bison 2.3).
           brew install \
             autoconf \
             bison \
@@ -65,22 +65,21 @@ jobs:
             libwebp \
             libpng \
             oniguruma \
-            icu4c
+            icu4c \
+            imagemagick \
+            postgresql@16
 
-      - name: Make Build Scripts Executable
+      - name: Make script executable
         run: chmod +x scripts/build-macos.sh
 
-      - name: Compile and Package PHP Core & Extensions
+      - name: Build PHP ${{ matrix.php }}
         run: ./scripts/build-macos.sh "${{ matrix.php }}"
-        env:
-          # Ensure bison from Homebrew is used (macOS ships an ancient bison 2.3)
-          PATH: /usr/local/opt/bison/bin:/opt/homebrew/opt/bison/bin:$PATH
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ matrix.php }}
-          name: PHP Version ${{ matrix.php }}
+          name: "PHP ${{ matrix.php }}"
           draft: false
           prerelease: false
           files: output/*

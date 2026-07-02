@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       php_version:
-        description: "PHP Version to build (e.g., 8.3.23 or 'all')"
+        description: "Exact PHP version (e.g. 8.3.23) or 'all'"
         required: true
         default: "all"
 
@@ -15,68 +15,116 @@ permissions:
   contents: write
 
 jobs:
+  # ── Compute matrix from manifest ────────────────────────────────────────────
   setup:
     runs-on: ubuntu-latest
     outputs:
-      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      matrix_legacy: ${{ steps.set-matrix.outputs.matrix_legacy }}
+      matrix_modern: ${{ steps.set-matrix.outputs.matrix_modern }}
     steps:
       - uses: actions/checkout@v4
+
       - id: set-matrix
         run: |
-          INPUT_VERSION="${{ github.event.inputs.php_version }}"
-          if [ -n "$INPUT_VERSION" ] && [ "$INPUT_VERSION" != "all" ]; then
-            echo "matrix=[\"$INPUT_VERSION\"]" >> $GITHUB_OUTPUT
+          INPUT="${{ github.event.inputs.php_version }}"
+
+          if [ -n "$INPUT" ] && [ "$INPUT" != "all" ]; then
+            # Single version: decide which runner it needs
+            MINOR=$(echo "$INPUT" | cut -d. -f1-2)
+            if [[ "$MINOR" == "7.4" || "$MINOR" == "8.0" ]]; then
+              echo "matrix_legacy=[\"$INPUT\"]" >> $GITHUB_OUTPUT
+              echo "matrix_modern=[]"           >> $GITHUB_OUTPUT
+            else
+              echo "matrix_legacy=[]"           >> $GITHUB_OUTPUT
+              echo "matrix_modern=[\"$INPUT\"]" >> $GITHUB_OUTPUT
+            fi
           else
-            # Extract values as a JSON array (e.g., ["7.4.33", "8.0.30", ...])
-            VERSIONS=$(jq -c '[.[]]' manifests/php.json)
-            echo "matrix=$VERSIONS" >> $GITHUB_OUTPUT
+            # All versions from manifest
+            ALL=$(jq -c '[.[]]' manifests/php.json)
+            # PHP 7.4, 8.0 → ubuntu-20.04 (OpenSSL 1.1)
+            LEGACY=$(jq -c '[.[] | select(startswith("7.4") or startswith("8.0"))]' manifests/php.json)
+            # PHP 8.1+ → ubuntu-24.04 (OpenSSL 3)
+            MODERN=$(jq -c '[.[] | select(startswith("7.4") or startswith("8.0") | not)]' manifests/php.json)
+            echo "matrix_legacy=$LEGACY" >> $GITHUB_OUTPUT
+            echo "matrix_modern=$MODERN" >> $GITHUB_OUTPUT
           fi
 
-  build:
+  # ── Legacy PHP (7.4, 8.0) on Ubuntu 20.04 — OpenSSL 1.1 ───────────────────
+  build-legacy:
     needs: setup
-    runs-on: ubuntu-24.04
+    if: ${{ needs.setup.outputs.matrix_legacy != '[]' && needs.setup.outputs.matrix_legacy != '' }}
+    runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
-        php: ${{ fromJson(needs.setup.outputs.matrix) }}
+        php: ${{ fromJson(needs.setup.outputs.matrix_legacy) }}
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Build Dependencies
+      - name: Install Build Dependencies (Ubuntu 20.04)
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential \
-            autoconf \
-            bison \
-            re2c \
-            pkg-config \
-            libxml2-dev \
-            libssl-dev \
-            libcurl4-openssl-dev \
-            libzip-dev \
-            libsqlite3-dev \
-            libpq-dev \
-            libpng-dev \
-            libjpeg-dev \
-            libwebp-dev \
-            libonig-dev \
-            libicu-dev \
-            libreadline-dev \
-            zlib1g-dev
+            build-essential autoconf bison re2c pkg-config \
+            libxml2-dev libssl-dev libcurl4-openssl-dev \
+            libzip-dev libsqlite3-dev libpq-dev \
+            libpng-dev libjpeg-dev libwebp-dev \
+            libonig-dev libicu-dev libreadline-dev zlib1g-dev \
+            libmagickwand-dev
 
-      - name: Make Build Scripts Executable
+      - name: Make script executable
         run: chmod +x scripts/build-linux.sh
 
-      - name: Compile and Package PHP Core & Extensions
+      - name: Build PHP ${{ matrix.php }}
         run: ./scripts/build-linux.sh "${{ matrix.php }}"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ matrix.php }}
-          name: PHP Version ${{ matrix.php }}
+          name: "PHP ${{ matrix.php }}"
+          draft: false
+          prerelease: false
+          files: output/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Modern PHP (8.1–8.5) on Ubuntu 24.04 — OpenSSL 3 ──────────────────────
+  build-modern:
+    needs: setup
+    if: ${{ needs.setup.outputs.matrix_modern != '[]' && needs.setup.outputs.matrix_modern != '' }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ${{ fromJson(needs.setup.outputs.matrix_modern) }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Build Dependencies (Ubuntu 24.04)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential autoconf bison re2c pkg-config \
+            libxml2-dev libssl-dev libcurl4-openssl-dev \
+            libzip-dev libsqlite3-dev libpq-dev \
+            libpng-dev libjpeg-dev libwebp-dev \
+            libonig-dev libicu-dev libreadline-dev zlib1g-dev \
+            libmagickwand-dev
+
+      - name: Make script executable
+        run: chmod +x scripts/build-linux.sh
+
+      - name: Build PHP ${{ matrix.php }}
+        run: ./scripts/build-linux.sh "${{ matrix.php }}"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ matrix.php }}
+          name: "PHP ${{ matrix.php }}"
           draft: false
           prerelease: false
           files: output/*
