@@ -1,0 +1,35 @@
+name: Build Windows
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2025
+
+    strategy:
+      matrix:
+        php:
+          - 7.4
+          - 8.0
+          - 8.1
+          - 8.2
+          - 8.3
+          - 8.4
+          - 8.5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - shell: powershell
+        run: |
+          $v = Get-Content manifests/php.json |
+            ConvertFrom-Json
+
+          .\scripts\build-windows.ps1 `
+            $v.${{ matrix.php }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-${{ matrix.php }}
+          path: output/*

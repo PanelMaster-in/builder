@@ -1,0 +1,44 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os:
+          - macos-13
+          - macos-14
+
+        php:
+          - 7.4
+          - 8.0
+          - 8.1
+          - 8.2
+          - 8.3
+          - 8.4
+          - 8.5
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: |
+          brew install \
+            autoconf \
+            bison \
+            re2c \
+            openssl
+
+      - run: chmod +x scripts/build-macos.sh
+
+      - run: |
+          VERSION=$(jq -r '."${{ matrix.php }}"' manifests/php.json)
+          ./scripts/build-macos.sh $VERSION
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.php }}
+          path: output/*

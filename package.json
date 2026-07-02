@@ -1,0 +1,8 @@
+{
+  "name": "flyenv-php-builder",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "discover": "node scripts/discover-php.js"
+  }
+}
