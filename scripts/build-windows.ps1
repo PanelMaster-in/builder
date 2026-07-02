@@ -4,6 +4,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Add PHP SDK tools to PATH so we can access phpsdk_deps, bison, flex, etc.
+$env:PATH = "C:\php-sdk\bin;C:\php-sdk\msys2\usr\bin;" + $env:PATH
+
 $Arch = "x64"
 $Minor = $Version.Substring(0, $Version.LastIndexOf('.')) # e.g. "8.3"
 
@@ -28,7 +31,6 @@ New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 Write-Host "==> Downloading PHP source..."
 $Url = "https://www.php.net/distributions/php-$Version.tar.gz"
 $TarPath = "$env:TEMP\php-$Version.tar.gz"
-# Use basic WebClient as fallback for older PowerShell, though Invoke-WebRequest is standard
 Invoke-WebRequest -Uri $Url -OutFile $TarPath
 
 # Extract using tar
