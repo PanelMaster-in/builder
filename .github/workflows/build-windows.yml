@@ -60,7 +60,7 @@ jobs:
           php-version: ${{ matrix.php }}
           arch: x64
           ts: nts
-          php-build-path: ${{ github.workspace }}/artifacts
+          build-directory: ${{ github.workspace }}/artifacts
 
       # Build Xdebug extension
       - name: Build Xdebug Extension
@@ -71,7 +71,7 @@ jobs:
           php-version: ${{ matrix.php }}
           arch: x64
           ts: nts
-          php-build-path: ${{ github.workspace }}/artifacts
+          build-directory: ${{ github.workspace }}/artifacts
 
       # Build MongoDB extension
       - name: Build MongoDB Extension
@@ -82,7 +82,7 @@ jobs:
           php-version: ${{ matrix.php }}
           arch: x64
           ts: nts
-          php-build-path: ${{ github.workspace }}/artifacts
+          build-directory: ${{ github.workspace }}/artifacts
 
       # Package the compiled core and extensions into separate zip files
       - name: Package Core and Extensions
