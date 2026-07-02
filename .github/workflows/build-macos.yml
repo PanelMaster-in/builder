@@ -66,6 +66,7 @@ jobs:
             libpng \
             oniguruma \
             icu4c \
+            libiconv \
             imagemagick \
             postgresql@16
 

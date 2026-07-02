@@ -32,7 +32,10 @@ CPU_CORES="$(sysctl -n hw.ncpu)"
 
 # Ensure Homebrew bison is on PATH (macOS ships ancient bison 2.3)
 export PATH="$BREW_PREFIX/opt/bison/bin:$PATH"
-export PKG_CONFIG_PATH="$BREW_PREFIX/opt/openssl@3/lib/pkgconfig:$BREW_PREFIX/opt/curl/lib/pkgconfig:$BREW_PREFIX/opt/libzip/lib/pkgconfig:$BREW_PREFIX/opt/icu4c/lib/pkgconfig:$BREW_PREFIX/opt/oniguruma/lib/pkgconfig:$PKG_CONFIG_PATH"
+export PKG_CONFIG_PATH="$BREW_PREFIX/opt/openssl@3/lib/pkgconfig:$BREW_PREFIX/opt/curl/lib/pkgconfig:$BREW_PREFIX/opt/libzip/lib/pkgconfig:$BREW_PREFIX/opt/icu4c/lib/pkgconfig:$BREW_PREFIX/opt/oniguruma/lib/pkgconfig:$BREW_PREFIX/opt/libiconv/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+# libiconv path — Homebrew's libiconv is keg-only, not symlinked to /usr/local
+ICONV_PREFIX="$BREW_PREFIX/opt/libiconv"
 
 # ── Download source ────────────────────────────────────────────────────────────
 echo "==> Downloading PHP $VERSION source..."
@@ -72,6 +75,7 @@ fi
   --enable-dom=shared \
   --with-openssl="$BREW_PREFIX/opt/openssl@3" \
   --with-curl="$BREW_PREFIX/opt/curl" \
+  --with-iconv="$ICONV_PREFIX" \
   --with-zlib \
   --with-mysqli=shared \
   --with-pdo-mysql=shared \
