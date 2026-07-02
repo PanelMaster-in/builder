@@ -28,13 +28,14 @@ New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 Write-Host "==> Downloading PHP source..."
 $Url = "https://www.php.net/distributions/php-$Version.tar.gz"
 $TarPath = "$env:TEMP\php-$Version.tar.gz"
+# Use basic WebClient as fallback for older PowerShell, though Invoke-WebRequest is standard
 Invoke-WebRequest -Uri $Url -OutFile $TarPath
 
 # Extract using tar
 tar -xf $TarPath -C $SrcDir --strip-components=1
 Remove-Item $TarPath
 
-# ── Helper: pick the right PECL version ───────────────────────────────────────
+# --- Helper: pick the right PECL version ---
 function Get-Pecl-Version($pkg) {
     switch ($pkg) {
         "redis" {
@@ -62,7 +63,7 @@ function Get-Pecl-Version($pkg) {
     }
 }
 
-# ── Download and extract PECL extension to the source tree ───────────────────
+# --- Download and extract PECL extension to the source tree ---
 function Install-Pecl-Extension($extName) {
     $extVer = Get-Pecl-Version $extName
     Write-Host "==> Downloading PECL extension: $extName ($extVer)..."
@@ -81,7 +82,7 @@ function Install-Pecl-Extension($extName) {
         Remove-Item $peclTarPath
         Write-Host "    [OK] Downloaded and staged $extName"
     } catch {
-        Write-Host "    [WARN] Failed to fetch PECL extension $extName — skipping"
+        Write-Host "    [WARN] Failed to fetch PECL extension $extName - skipping"
     }
 }
 
@@ -154,7 +155,7 @@ if (Test-Path $DistExtDir) {
         $ZipName = "ext-$Version-$ExtName-windows-$Arch.zip"
         $ZipPath = Join-Path $OutputDir $ZipName
         Compress-Archive -Path "$StagePath\*" -DestinationPath $ZipPath -Force
-        Write-Host "    -> packaged extension: $ZipName"
+        Write-Host "    - packaged extension: $ZipName"
     }
     
     # Remove the empty ext folder from core package
@@ -165,6 +166,6 @@ if (Test-Path $DistExtDir) {
 Write-Host "==> Packaging PHP Core..."
 $CoreZipPath = Join-Path $OutputDir "php-$Version-windows-$Arch.zip"
 Compress-Archive -Path "$DistDir\*" -DestinationPath $CoreZipPath -Force
-Write-Host "    -> packaged core: php-$Version-windows-$Arch.zip"
+Write-Host "    - packaged core: php-$Version-windows-$Arch.zip"
 
 Write-Host "==> Windows build process completed."
