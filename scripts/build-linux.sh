@@ -38,10 +38,13 @@ rm /tmp/php.tar.gz
 # PHP 7.4 and 8.0 reference this removed constant in ext/openssl/openssl.c.
 if [[ "$MINOR" == "7.4" || "$MINOR" == "8.0" ]]; then
   echo "==> Applying OpenSSL 3 compatibility patch for PHP $MINOR..."
-  sed -i \
-    's/RSA_SSLV23_PADDING/RSA_PKCS1_PADDING/g' \
-    "$SRC_DIR/ext/openssl/openssl.c" || true
+  perl -pi -e 's/RSA_SSLV23_PADDING/RSA_PKCS1_PADDING/g' "$SRC_DIR/ext/openssl/openssl.c" || true
 fi
+
+# Force C++17 compatibility in ext/intl/config.m4
+echo "==> Forcing C++17 compatibility in config.m4..."
+perl -pi -e 's/-std=c\+\+11/-std=c++17/g' "$SRC_DIR/ext/intl/config.m4" || true
+perl -pi -e 's/-std=gnu\+\+11/-std=gnu++17/g' "$SRC_DIR/ext/intl/config.m4" || true
 
 cd "$SRC_DIR"
 ./buildconf --force 2>/dev/null
@@ -84,6 +87,11 @@ fi
   --with-sqlite3=shared \
   --with-pdo-sqlite=shared \
   $LIBXML_FLAG
+
+# Force C++17 in Makefile
+echo "==> Forcing C++17 in Makefile..."
+perl -pi -e 's/-std=c\+\+11/-std=c++17/g' Makefile || true
+perl -pi -e 's/-std=gnu\+\+11/-std=gnu++17/g' Makefile || true
 
 echo "==> Compiling PHP Core (this takes a while)..."
 make -j$(nproc)
