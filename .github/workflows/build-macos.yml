@@ -62,7 +62,7 @@ jobs:
             libzip \
             libxml2 \
             jpeg \
-            libwebp \
+            webp \
             libpng \
             oniguruma \
             icu4c \
