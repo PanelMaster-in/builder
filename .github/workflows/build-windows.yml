@@ -45,7 +45,7 @@ jobs:
 
       # Build the core PHP runtime
       - name: Build PHP Core
-        uses: php/php-windows-builder/php@v1
+        uses: ServBay/php-windows-builder/php@master
         with:
           php-version: ${{ matrix.php }}
           arch: x64
@@ -53,36 +53,36 @@ jobs:
 
       # Build Redis extension
       - name: Build Redis Extension
-        uses: php/php-windows-builder/extension@v1
+        uses: ServBay/php-windows-builder/extension@master
         with:
           extension-url: https://github.com/phpredis/phpredis
           extension-ref: ${{ (startsWith(matrix.php, '8.5') && '6.3.0') || (startsWith(matrix.php, '8.4') && '6.2.0') || '6.0.2' }}
           php-version: ${{ matrix.php }}
           arch: x64
           ts: nts
-          build-directory: ${{ github.workspace }}/artifacts
+          php-build-path: ${{ github.workspace }}/artifacts
 
       # Build Xdebug extension
       - name: Build Xdebug Extension
-        uses: php/php-windows-builder/extension@v1
+        uses: ServBay/php-windows-builder/extension@master
         with:
           extension-url: https://github.com/xdebug/xdebug
           extension-ref: ${{ (startsWith(matrix.php, '7.4') && '3.1.6') || (startsWith(matrix.php, '8.5') && '3.5.3') || (startsWith(matrix.php, '8.4') && '3.5.3') || '3.4.4' }}
           php-version: ${{ matrix.php }}
           arch: x64
           ts: nts
-          build-directory: ${{ github.workspace }}/artifacts
+          php-build-path: ${{ github.workspace }}/artifacts
 
       # Build MongoDB extension
       - name: Build MongoDB Extension
-        uses: php/php-windows-builder/extension@v1
+        uses: ServBay/php-windows-builder/extension@master
         with:
           extension-url: https://github.com/mongodb/mongo-php-driver
           extension-ref: ${{ (startsWith(matrix.php, '7.4') || startsWith(matrix.php, '8.0')) && '1.20.1' || '2.3.3' }}
           php-version: ${{ matrix.php }}
           arch: x64
           ts: nts
-          build-directory: ${{ github.workspace }}/artifacts
+          php-build-path: ${{ github.workspace }}/artifacts
 
       # Package the compiled core and extensions into separate zip files
       - name: Package Core and Extensions
