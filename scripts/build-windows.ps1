@@ -4,8 +4,10 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Arch = "x64" # Default to x64. If running in ARM64 environment, can be configured.
-Write-Host "Building PHP $Version for Windows $Arch..."
+$Arch = "x64"
+$Minor = $Version.Substring(0, $Version.LastIndexOf('.')) # e.g. "8.3"
+
+Write-Host "==> Building PHP $Version (branch $Minor) for Windows $Arch..."
 
 # Setup Directories
 $SrcDir = "C:\php-sdk\src\php-$Version"
@@ -23,7 +25,7 @@ New-Item -Path $ExtStageDir -ItemType Directory -Force | Out-Null
 New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 
 # Download and Extract PHP source
-Write-Host "Downloading PHP source..."
+Write-Host "==> Downloading PHP source..."
 $Url = "https://www.php.net/distributions/php-$Version.tar.gz"
 $TarPath = "$env:TEMP\php-$Version.tar.gz"
 Invoke-WebRequest -Uri $Url -OutFile $TarPath
@@ -32,19 +34,73 @@ Invoke-WebRequest -Uri $Url -OutFile $TarPath
 tar -xf $TarPath -C $SrcDir --strip-components=1
 Remove-Item $TarPath
 
-cd $SrcDir
-
-# Buildconf and Configure (MSVC Stack)
-Write-Host "Configuring PHP build..."
-# Load phpsdk tooling in current session if exists
-if (Test-Path "C:\php-sdk\bin\phpsdk_env.ps1") {
-    . "C:\php-sdk\bin\phpsdk_env.ps1"
+# ── Helper: pick the right PECL version ───────────────────────────────────────
+function Get-Pecl-Version($pkg) {
+    switch ($pkg) {
+        "redis" {
+            switch ($Minor) {
+                "8.5" { return "6.3.0" }
+                "8.4" { return "6.2.0" }
+                default { return "6.0.2" }
+            }
+        }
+        "xdebug" {
+            switch ($Minor) {
+                "8.5" { return "3.5.3" }
+                "8.4" { return "3.5.3" }
+                "7.4" { return "3.1.6" }
+                default { return "3.4.4" }
+            }
+        }
+        "mongodb" {
+            switch ($Minor) {
+                "7.4" { return "1.21.0" }
+                "8.0" { return "1.21.0" }
+                default { return "2.3.3" }
+            }
+        }
+    }
 }
 
-# Run buildconf.bat
+# ── Download and extract PECL extension to the source tree ───────────────────
+function Install-Pecl-Extension($extName) {
+    $extVer = Get-Pecl-Version $extName
+    Write-Host "==> Downloading PECL extension: $extName ($extVer)..."
+    
+    $peclUrl = "https://pecl.php.net/get/$extName-$extVer.tgz"
+    $peclTarPath = "$env:TEMP\$extName-$extVer.tgz"
+    
+    try {
+        Invoke-WebRequest -Uri $peclUrl -OutFile $peclTarPath -ErrorAction Stop
+        
+        $peclDir = "$SrcDir\pecl\$extName"
+        New-Item -Path $peclDir -ItemType Directory -Force | Out-Null
+        
+        # Extract into pecl folder
+        tar -xf $peclTarPath -C $peclDir --strip-components=1
+        Remove-Item $peclTarPath
+        Write-Host "    [OK] Downloaded and staged $extName"
+    } catch {
+        Write-Host "    [WARN] Failed to fetch PECL extension $extName — skipping"
+    }
+}
+
+# Download extensions
+Install-Pecl-Extension "redis"
+Install-Pecl-Extension "xdebug"
+Install-Pecl-Extension "mongodb"
+
+cd $SrcDir
+
+# Update Dependencies using phpsdk_deps
+Write-Host "==> Updating PHP SDK dependencies..."
+& phpsdk_deps --update --branch $Minor
+
+# Buildconf and Configure (MSVC Stack)
+Write-Host "==> Configuring PHP build..."
 & .\buildconf.bat
 
-# Configure with shared extensions
+# Configure with shared extensions and PECL extensions
 & .\configure.bat `
     --prefix=$DistDir `
     --enable-cli `
@@ -60,19 +116,22 @@ if (Test-Path "C:\php-sdk\bin\phpsdk_env.ps1") {
     --with-curl=shared `
     --with-mysqli=shared `
     --with-pdo-mysql=shared `
+    --with-pdo-pgsql=shared `
     --with-sqlite3=shared `
-    --with-pdo-sqlite=shared
+    --with-pdo-sqlite=shared `
+    --enable-redis=shared `
+    --enable-xdebug=shared `
+    --enable-mongodb=shared
 
-# Compile using nmake
-Write-Host "Compiling..."
+# Compile and install
+Write-Host "==> Compiling..."
 & nmake
 & nmake install
 
 # Locate dynamic extensions (.dll files) in the dist directory
-# By default nmake install places extension DLLs in $DistDir\ext
 $DistExtDir = Join-Path $DistDir "ext"
 if (Test-Path $DistExtDir) {
-    Write-Host "Packaging dynamic extensions..."
+    Write-Host "==> Packaging dynamic extensions..."
     $Dlls = Get-ChildItem -Path $DistExtDir -Filter "*.dll"
     
     foreach ($Dll in $Dlls) {
@@ -95,7 +154,7 @@ if (Test-Path $DistExtDir) {
         $ZipName = "ext-$Version-$ExtName-windows-$Arch.zip"
         $ZipPath = Join-Path $OutputDir $ZipName
         Compress-Archive -Path "$StagePath\*" -DestinationPath $ZipPath -Force
-        Write-Host "Packaged Windows extension: $ZipName"
+        Write-Host "    -> packaged extension: $ZipName"
     }
     
     # Remove the empty ext folder from core package
@@ -103,9 +162,9 @@ if (Test-Path $DistExtDir) {
 }
 
 # Package the remaining core PHP runtime files
-Write-Host "Packaging PHP Core..."
+Write-Host "==> Packaging PHP Core..."
 $CoreZipPath = Join-Path $OutputDir "php-$Version-windows-$Arch.zip"
 Compress-Archive -Path "$DistDir\*" -DestinationPath $CoreZipPath -Force
-Write-Host "Packaged Windows PHP Core: php-$Version-windows-$Arch.zip"
+Write-Host "    -> packaged core: php-$Version-windows-$Arch.zip"
 
-Write-Host "Windows build process completed."
+Write-Host "==> Windows build process completed."

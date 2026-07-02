@@ -54,13 +54,12 @@ jobs:
         shell: powershell
         run: |
           git clone --depth=1 https://github.com/php/php-sdk-binary-tools.git C:\php-sdk
-          # Initialize the SDK environment and verify it is available
-          & C:\php-sdk\phpsdk-vs17-x64.bat
 
       - name: Compile and Package PHP Core & Extensions
-        shell: powershell
+        shell: cmd
         run: |
-          .\scripts\build-windows.ps1 -Version "${{ matrix.php }}"
+          call C:\php-sdk\bin\phpsdk_env.bat
+          powershell -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1 -Version ${{ matrix.php }}
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
