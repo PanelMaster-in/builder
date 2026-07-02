@@ -33,9 +33,7 @@ CPU_CORES="$(sysctl -n hw.ncpu)"
 # Ensure Homebrew bison is on PATH (macOS ships ancient bison 2.3)
 export PATH="$BREW_PREFIX/opt/bison/bin:$PATH"
 export PKG_CONFIG_PATH="$BREW_PREFIX/opt/openssl@3/lib/pkgconfig:$BREW_PREFIX/opt/curl/lib/pkgconfig:$BREW_PREFIX/opt/libzip/lib/pkgconfig:$BREW_PREFIX/opt/icu4c/lib/pkgconfig:$BREW_PREFIX/opt/oniguruma/lib/pkgconfig:$BREW_PREFIX/opt/libiconv/lib/pkgconfig:$PKG_CONFIG_PATH"
-if [[ "$MINOR" == "7.4" || "$MINOR" == "8.0" ]]; then
-  export CXXFLAGS="-std=c++14"
-fi
+export CXXFLAGS="-std=c++17"
 
 # libiconv path — Homebrew's libiconv is keg-only, not symlinked to /usr/local
 ICONV_PREFIX="$BREW_PREFIX/opt/libiconv"
