@@ -125,7 +125,7 @@ pecl_version_for() {
       # mongodb 2.x requires PHP 8.1+
       # mongodb 1.x supports PHP 7.4–8.0
       case "$MINOR" in
-        7.4|8.0) echo "1.21.0" ;;
+        7.4|8.0) echo "1.20.1" ;;
         *)       echo "2.3.3" ;;
       esac
       ;;

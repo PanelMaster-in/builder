@@ -78,7 +78,7 @@ jobs:
         uses: php/php-windows-builder/extension@v1
         with:
           extension-url: https://github.com/mongodb/mongo-php-driver
-          extension-ref: ${{ (startsWith(matrix.php, '7.4') || startsWith(matrix.php, '8.0')) && '1.21.0' || '2.3.3' }}
+          extension-ref: ${{ (startsWith(matrix.php, '7.4') || startsWith(matrix.php, '8.0')) && '1.20.1' || '2.3.3' }}
           php-version: ${{ matrix.php }}
           arch: x64
           ts: nts
