@@ -44,6 +44,12 @@ curl -fsSL "https://www.php.net/distributions/php-${VERSION}.tar.gz" -o /tmp/php
 tar -xf /tmp/php.tar.gz -C "$SRC_DIR" --strip-components=1
 rm /tmp/php.tar.gz
 
+# Apply OpenSSL 3 compatibility patch for PHP 7.4 / 8.0 on macOS
+if [[ "$MINOR" == "7.4" || "$MINOR" == "8.0" ]]; then
+  echo "==> Applying OpenSSL 3 compatibility patch..."
+  perl -pi -e 's/RSA_SSLV23_PADDING/RSA_PKCS1_PADDING/g' "$SRC_DIR/ext/openssl/openssl.c" || true
+fi
+
 cd "$SRC_DIR"
 ./buildconf --force 2>/dev/null
 
