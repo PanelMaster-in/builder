@@ -33,8 +33,8 @@ $Url = "https://www.php.net/distributions/php-$Version.tar.gz"
 $TarPath = "$env:TEMP\php-$Version.tar.gz"
 Invoke-WebRequest -Uri $Url -OutFile $TarPath
 
-# Extract using tar
-tar -xf $TarPath -C $SrcDir --strip-components=1
+# Extract using tar. Use --force-local to prevent Windows tar from interpreting "C:" as a remote host
+tar --force-local -xf $TarPath -C $SrcDir --strip-components=1
 Remove-Item $TarPath
 
 # --- Helper: pick the right PECL version ---
@@ -80,7 +80,7 @@ function Install-Pecl-Extension($extName) {
         New-Item -Path $peclDir -ItemType Directory -Force | Out-Null
         
         # Extract into pecl folder
-        tar -xf $peclTarPath -C $peclDir --strip-components=1
+        tar --force-local -xf $peclTarPath -C $peclDir --strip-components=1
         Remove-Item $peclTarPath
         Write-Host "    [OK] Downloaded and staged $extName"
     } catch {
@@ -93,11 +93,13 @@ Install-Pecl-Extension "redis"
 Install-Pecl-Extension "xdebug"
 Install-Pecl-Extension "mongodb"
 
-cd $SrcDir
+# Force the OS process current directory to match the PowerShell location
+[System.IO.Directory]::SetCurrentDirectory($SrcDir)
+Set-Location $SrcDir
 
 # Update Dependencies using phpsdk_deps
 Write-Host "==> Updating PHP SDK dependencies..."
-& phpsdk_deps --update --branch $Minor
+& phpsdk_deps --update --branch $Minor -d $SrcDir
 
 # Buildconf and Configure (MSVC Stack)
 Write-Host "==> Configuring PHP build..."
