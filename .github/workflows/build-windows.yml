@@ -34,7 +34,7 @@ jobs:
 
   build:
     needs: setup
-    runs-on: windows-2025
+    runs-on: windows-2022
     strategy:
       fail-fast: false
       matrix:
@@ -43,23 +43,100 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Set up MSVC build toolchain (Visual Studio Build Tools are preinstalled on windows-2025 runners)
-      - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
+      # Build the core PHP runtime
+      - name: Build PHP Core
+        uses: php/php-windows-builder/php@v1
         with:
+          php-version: ${{ matrix.php }}
           arch: x64
+          ts: nts
 
-      # Set up PHP SDK environment
-      - name: Install PHP SDK binary tools
+      # Build Redis extension
+      - name: Build Redis Extension
+        uses: php/php-windows-builder/extension@v1
+        with:
+          extension-url: https://github.com/phpredis/phpredis
+          extension-ref: ${{ (startsWith(matrix.php, '8.5') && '6.3.0') || (startsWith(matrix.php, '8.4') && '6.2.0') || '6.0.2' }}
+          php-version: ${{ matrix.php }}
+          arch: x64
+          ts: nts
+          php-build-path: ${{ github.workspace }}/artifacts
+
+      # Build Xdebug extension
+      - name: Build Xdebug Extension
+        uses: php/php-windows-builder/extension@v1
+        with:
+          extension-url: https://github.com/xdebug/xdebug
+          extension-ref: ${{ (startsWith(matrix.php, '7.4') && '3.1.6') || (startsWith(matrix.php, '8.5') && '3.5.3') || (startsWith(matrix.php, '8.4') && '3.5.3') || '3.4.4' }}
+          php-version: ${{ matrix.php }}
+          arch: x64
+          ts: nts
+          php-build-path: ${{ github.workspace }}/artifacts
+
+      # Build MongoDB extension
+      - name: Build MongoDB Extension
+        uses: php/php-windows-builder/extension@v1
+        with:
+          extension-url: https://github.com/mongodb/mongo-php-driver
+          extension-ref: ${{ (startsWith(matrix.php, '7.4') || startsWith(matrix.php, '8.0')) && '1.21.0' || '2.3.3' }}
+          php-version: ${{ matrix.php }}
+          arch: x64
+          ts: nts
+          php-build-path: ${{ github.workspace }}/artifacts
+
+      # Package the compiled core and extensions into separate zip files
+      - name: Package Core and Extensions
         shell: powershell
         run: |
-          git clone --depth=1 https://github.com/php/php-sdk-binary-tools.git C:\php-sdk
+          $Version = "${{ matrix.php }}"
+          $Arch = "x64"
+          $OutputDir = "output"
+          $ExtStageDir = "ext-stage"
+          $DistDir = "artifacts"
 
-      - name: Compile and Package PHP Core & Extensions
-        shell: powershell
-        run: |
-          .\scripts\build-windows.ps1 -Version "${{ matrix.php }}"
+          if (!(Test-Path $OutputDir)) { New-Item -ItemType Directory -Path $OutputDir }
+          if (!(Test-Path $ExtStageDir)) { New-Item -ItemType Directory -Path $ExtStageDir }
 
+          # Locate compiled DLLs in artifacts/ext
+          $DistExtDir = Join-Path $DistDir "ext"
+          if (Test-Path $DistExtDir) {
+              Write-Host "==> Packaging dynamic extensions..."
+              $Dlls = Get-ChildItem -Path $DistExtDir -Filter "*.dll"
+              
+              foreach ($Dll in $Dlls) {
+                  $ExtName = $Dll.BaseName -replace '^php_', ''
+                  $StagePath = Join-Path $ExtStageDir $ExtName
+                  New-Item -Path $StagePath -ItemType Directory -Force | Out-Null
+                  
+                  # Copy the DLL to staging
+                  Move-Item -Path $Dll.FullName -Destination $StagePath
+                  
+                  # Generate the loading .ini configuration file
+                  $IniFile = Join-Path $StagePath "$ExtName.ini"
+                  if ($ExtName -eq "opcache") {
+                      "zend_extension=php_opcache.dll" | Out-File -FilePath $IniFile -Encoding utf8
+                  } else {
+                      "extension=php_$ExtName.dll" | Out-File -FilePath $IniFile -Encoding utf8
+                  }
+                  
+                  # Compress extension
+                  $ZipName = "ext-$Version-$ExtName-windows-$Arch.zip"
+                  $ZipPath = Join-Path $OutputDir $ZipName
+                  Compress-Archive -Path "$StagePath\*" -DestinationPath $ZipPath -Force
+                  Write-Host "    - packaged extension: $ZipName"
+              }
+              
+              # Remove the empty ext folder from core package
+              Remove-Item $DistExtDir -Recurse -Force
+          }
+
+          # Package the remaining core PHP runtime files
+          Write-Host "==> Packaging PHP Core..."
+          $CoreZipPath = Join-Path $OutputDir "php-$Version-windows-$Arch.zip"
+          Compress-Archive -Path "$DistDir\*" -DestinationPath $CoreZipPath -Force
+          Write-Host "    - packaged core: php-$Version-windows-$Arch.zip"
+
+      # Upload packaged zip files to GitHub Releases
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
