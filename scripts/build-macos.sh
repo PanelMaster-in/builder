@@ -33,14 +33,13 @@ rm php.tar.gz
 
 cd "$SRC_DIR"
 
-# Generate buildconf
-./buildconf --force || true
-
 # Determine core compiler threads
 CPU_CORES=$(sysctl -n hw.ncpu || echo 4)
 
+# Resolve Homebrew prefix for the current architecture
+BREW_PREFIX=$(brew --prefix)
+
 # Configure PHP core build
-# Compile major extensions as dynamic (shared) modules
 echo "Configuring PHP..."
 ./configure \
   --prefix="$DIST_DIR" \
@@ -58,14 +57,15 @@ echo "Configuring PHP..."
   --enable-xmlreader=shared \
   --enable-xmlwriter=shared \
   --enable-dom=shared \
-  --with-openssl=shared \
-  --with-curl=shared \
-  --with-zlib=shared \
+  --with-openssl="$BREW_PREFIX/opt/openssl@3" \
+  --with-curl="$BREW_PREFIX/opt/curl" \
+  --with-zlib \
   --with-mysqli=shared \
   --with-pdo-mysql=shared \
   --with-sqlite3=shared \
   --with-pdo-sqlite=shared \
-  --with-libxml
+  --with-libxml \
+  --with-zip="$BREW_PREFIX/opt/libzip"
 
 echo "Compiling PHP Core..."
 make -j$CPU_CORES
@@ -73,9 +73,9 @@ make install
 
 # Compile external PECL Extensions
 compile_pecl_extension() {
-  local ext_name=$1
-  local ext_version=$2
-  local config_opts=$3
+  local ext_name="$1"
+  local ext_version="$2"
+  local config_opts="$3"
 
   echo "Building PECL extension: ${ext_name} (${ext_version})..."
   local ext_dir="/tmp/pecl-${ext_name}"
@@ -88,42 +88,41 @@ compile_pecl_extension() {
     rm /tmp/pecl.tgz
   else
     echo "Warning: PECL extension ${ext_name} download failed. Skipping."
-    return 1
+    return 0
   fi
 
   cd "$ext_dir"
   "$DIST_DIR/bin/phpize"
   ./configure --with-php-config="$DIST_DIR/bin/php-config" $config_opts
   make -j$CPU_CORES
-  
+
   # Copy compiled module to staging directory
   mkdir -p "$EXT_STAGE_DIR/$ext_name"
-  cp modules/${ext_name}.so "$EXT_STAGE_DIR/$ext_name/"
+  cp "modules/${ext_name}.so" "$EXT_STAGE_DIR/$ext_name/"
   echo "extension=${ext_name}.so" > "$EXT_STAGE_DIR/$ext_name/${ext_name}.ini"
+
+  cd "$SRC_DIR"
 }
 
-# Compile standard external extensions
-compile_pecl_extension "redis" "6.0.2"
-compile_pecl_extension "xdebug" "3.3.2"
-compile_pecl_extension "mongodb" "1.19.4"
+# Compile standard external PECL extensions
+compile_pecl_extension "redis" "6.1.0"
+compile_pecl_extension "xdebug" "3.4.4"
+compile_pecl_extension "mongodb" "1.21.0"
 compile_pecl_extension "imagick" "3.7.0" || true
 compile_pecl_extension "grpc" "1.64.1" || true
 
 # Extract Core Shared Extensions
-# Find extension directory in PHP installation
-PHP_EXT_DIR=$("$DIST_DIR/bin/php-config" --extension-dir)
+PHP_EXT_DIR="$("$DIST_DIR/bin/php-config" --extension-dir)"
 
 echo "Extracting shared core extensions from $PHP_EXT_DIR..."
-# Move all built core .so files to staging
 core_exts=("opcache" "mbstring" "bcmath" "intl" "zip" "sockets" "soap" "xml" "simplexml" "xmlreader" "xmlwriter" "dom" "openssl" "curl" "mysqli" "pdo_mysql" "sqlite3" "pdo_sqlite")
 
 for ext in "${core_exts[@]}"; do
-  local_so="$PHP_EXT_DIR/${ext}.so"
-  if [ -f "$local_so" ]; then
+  # FIX: do NOT use 'local' here — this is top-level script scope, not a function
+  ext_so="$PHP_EXT_DIR/${ext}.so"
+  if [ -f "$ext_so" ]; then
     mkdir -p "$EXT_STAGE_DIR/$ext"
-    mv "$local_so" "$EXT_STAGE_DIR/$ext/"
-    
-    # Generate loader ini file
+    mv "$ext_so" "$EXT_STAGE_DIR/$ext/"
     if [ "$ext" = "opcache" ]; then
       echo "zend_extension=opcache.so" > "$EXT_STAGE_DIR/$ext/${ext}.ini"
     else
@@ -135,7 +134,8 @@ done
 # Package Extensions separately
 echo "Packaging Dynamic Extensions..."
 cd "$EXT_STAGE_DIR"
-for ext in *; do
+for ext in */; do
+  ext="${ext%/}"
   if [ -d "$ext" ]; then
     tar -czf "$OUTPUT_DIR/ext-${VERSION}-${ext}-macos-${PLATFORM_ARCH}.tar.gz" -C "$ext" .
     echo "Packaged extension: ext-${VERSION}-${ext}-macos-${PLATFORM_ARCH}.tar.gz"

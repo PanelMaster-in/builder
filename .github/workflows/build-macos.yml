@@ -48,24 +48,33 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Build Dependencies (Homebrew)
+        # FIX: correct formula names — 'libjpeg' does not exist (use 'jpeg'),
+        # 'webp' does not exist (use 'libwebp'). Also added pkg-config and
+        # libxml2 which are required for PHP's configure step.
         run: |
           brew install \
             autoconf \
             bison \
             re2c \
-            openssl \
+            pkg-config \
+            openssl@3 \
             curl \
             libzip \
+            libxml2 \
+            jpeg \
+            libwebp \
             libpng \
-            libjpeg \
-            webp \
-            oniguruma
+            oniguruma \
+            icu4c
 
       - name: Make Build Scripts Executable
         run: chmod +x scripts/build-macos.sh
 
       - name: Compile and Package PHP Core & Extensions
         run: ./scripts/build-macos.sh "${{ matrix.php }}"
+        env:
+          # Ensure bison from Homebrew is used (macOS ships an ancient bison 2.3)
+          PATH: /usr/local/opt/bison/bin:/opt/homebrew/opt/bison/bin:$PATH
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2

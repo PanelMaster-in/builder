@@ -51,6 +51,7 @@ jobs:
             autoconf \
             bison \
             re2c \
+            pkg-config \
             libxml2-dev \
             libssl-dev \
             libcurl4-openssl-dev \
@@ -60,7 +61,10 @@ jobs:
             libpng-dev \
             libjpeg-dev \
             libwebp-dev \
-            libonig-dev
+            libonig-dev \
+            libicu-dev \
+            libreadline-dev \
+            zlib1g-dev
 
       - name: Make Build Scripts Executable
         run: chmod +x scripts/build-linux.sh

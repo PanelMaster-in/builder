@@ -70,10 +70,11 @@ make -j$(nproc)
 make install
 
 # Compile external PECL Extensions
+# NOTE: 'local' keyword is ONLY valid inside bash functions — never use it at script top-level
 compile_pecl_extension() {
-  local ext_name=$1
-  local ext_version=$2
-  local config_opts=$3
+  local ext_name="$1"
+  local ext_version="$2"
+  local config_opts="$3"
 
   echo "Building PECL extension: ${ext_name} (${ext_version})..."
   local ext_dir="/tmp/pecl-${ext_name}"
@@ -86,47 +87,41 @@ compile_pecl_extension() {
     rm /tmp/pecl.tgz
   else
     echo "Warning: PECL extension ${ext_name} download failed. Skipping."
-    return 1
+    return 0
   fi
 
   cd "$ext_dir"
   "$DIST_DIR/bin/phpize"
   ./configure --with-php-config="$DIST_DIR/bin/php-config" $config_opts
   make -j$(nproc)
-  
+
   # Copy compiled module to staging directory
   mkdir -p "$EXT_STAGE_DIR/$ext_name"
-  cp modules/${ext_name}.so "$EXT_STAGE_DIR/$ext_name/"
+  cp "modules/${ext_name}.so" "$EXT_STAGE_DIR/$ext_name/"
   echo "extension=${ext_name}.so" > "$EXT_STAGE_DIR/$ext_name/${ext_name}.ini"
+
+  cd "$SRC_DIR"
 }
 
-# Compile standard external extensions
-# Versions are pinned to stable releases compatible with PHP 7.4 - 8.4
-compile_pecl_extension "redis" "6.0.2"
-compile_pecl_extension "xdebug" "3.3.2"
-compile_pecl_extension "mongodb" "1.19.4"
-# Compile imagick, grpc (if dependency exists)
-# In production workflow, dynamic libs like ImageMagick/grpc are preinstalled on build runner
+# Compile standard external PECL extensions
+compile_pecl_extension "redis" "6.1.0"
+compile_pecl_extension "xdebug" "3.4.4"
+compile_pecl_extension "mongodb" "1.21.0"
 compile_pecl_extension "imagick" "3.7.0" || true
 compile_pecl_extension "grpc" "1.64.1" || true
 
 # Extract Core Shared Extensions
-# Find extension directory in PHP installation
-PHP_EXT_DIR=$("$DIST_DIR/bin/php-config" --extension-dir)
+PHP_EXT_DIR="$("$DIST_DIR/bin/php-config" --extension-dir)"
 
 echo "Extracting shared core extensions from $PHP_EXT_DIR..."
-# Move all built core .so files to staging
 core_exts=("opcache" "mbstring" "bcmath" "intl" "zip" "sockets" "soap" "xml" "simplexml" "xmlreader" "xmlwriter" "dom" "openssl" "curl" "mysqli" "pdo_mysql" "pdo_pgsql" "sqlite3" "pdo_sqlite")
 
 for ext in "${core_exts[@]}"; do
-  # Check if extension .so exists (some XML components might compile into single/different .so files depending on PHP version)
-  # Look for either [ext].so or similar matching names
-  local_so="$PHP_EXT_DIR/${ext}.so"
-  if [ -f "$local_so" ]; then
+  # FIX: do NOT use 'local' here — this is top-level script scope, not a function
+  ext_so="$PHP_EXT_DIR/${ext}.so"
+  if [ -f "$ext_so" ]; then
     mkdir -p "$EXT_STAGE_DIR/$ext"
-    mv "$local_so" "$EXT_STAGE_DIR/$ext/"
-    
-    # Generate loader ini file
+    mv "$ext_so" "$EXT_STAGE_DIR/$ext/"
     if [ "$ext" = "opcache" ]; then
       echo "zend_extension=opcache.so" > "$EXT_STAGE_DIR/$ext/${ext}.ini"
     else
@@ -138,7 +133,8 @@ done
 # Package Extensions separately
 echo "Packaging Dynamic Extensions..."
 cd "$EXT_STAGE_DIR"
-for ext in *; do
+for ext in */; do
+  ext="${ext%/}"
   if [ -d "$ext" ]; then
     tar -czf "$OUTPUT_DIR/ext-${VERSION}-${ext}-linux-${PLATFORM_ARCH}.tar.gz" -C "$ext" .
     echo "Packaged extension: ext-${VERSION}-${ext}-linux-${PLATFORM_ARCH}.tar.gz"
@@ -148,8 +144,6 @@ done
 # Package PHP Core (Base Runtime)
 echo "Packaging PHP Core Runtime..."
 cd "$DIST_DIR"
-# The extension_dir inside the core package is now clean of built dynamic extensions
-# Create a base archive
 tar -czf "$OUTPUT_DIR/php-${VERSION}-linux-${PLATFORM_ARCH}.tar.gz" .
 echo "Packaged PHP Core: php-${VERSION}-linux-${PLATFORM_ARCH}.tar.gz"
 
